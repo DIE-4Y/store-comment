@@ -36,8 +36,8 @@ public class UserController {
      */
     @PostMapping("code")
     public Result sendCode(@RequestParam("phone") String phone, HttpSession session) {
-        // TODO 发送短信验证码并保存验证码
-        return Result.fail("功能未完成");
+        log.info("手机验证码方法调用中:{},{}",phone, session);
+        return userService.sendCode(phone, session);
     }
 
     /**
