@@ -44,7 +44,7 @@ public class ShopTypeServiceImpl extends ServiceImpl<ShopTypeMapper, ShopType> i
         }
 
         //从数据库获取
-        shopTypeList = query().orderByDesc("update_time").list();
+        shopTypeList = query().orderByAsc("sort").list();
 
         //存入redis
         shopTypes = new ArrayList<>();
