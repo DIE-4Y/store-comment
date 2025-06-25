@@ -11,6 +11,7 @@ import com.hmdp.utils.RedisConstants;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -42,6 +43,9 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
         Map<Object, Object> shopMap = stringRedisTemplate.opsForHash().entries(shopKey);
         if(MapUtil.isNotEmpty(shopMap)){
             //有数据
+            if (shopMap.containsKey("__NULL__")) { // 检查空值标记
+                return null; // 返回空值，避免穿透
+            }
             return BeanUtil.fillBeanWithMap(shopMap, new Shop(), false);
         }
 
@@ -56,8 +60,31 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
             stringRedisTemplate.opsForHash().putAll(shopKey, map);
 
             stringRedisTemplate.expire(shopKey, RedisConstants.CACHE_SHOP_TTL, TimeUnit.MINUTES);
+        }else {
+            // 数据库不存在的数据：写入特殊空值标记（防止缓存穿透）
+            Map<String, String> nullMap = new HashMap<>();
+            nullMap.put("__NULL__", "1"); // 特殊空值标记
+
+            stringRedisTemplate.opsForHash().putAll(shopKey, nullMap);
+            // 设置较短的过期时间（例如5分钟）
+            stringRedisTemplate.expire(shopKey, RedisConstants.CACHE_NULL_TTL, TimeUnit.MINUTES);
         }
 
         return shop;
+    }
+
+    @Transactional
+    @Override
+    public boolean updateShop(Shop shop) {
+        if(shop.getId() == null){
+            return false;
+        }
+
+        //先更新数据库
+        updateById(shop);
+        //再删除缓存
+        stringRedisTemplate.delete(RedisConstants.CACHE_SHOP_KEY + shop.getId());
+
+        return true;
     }
 }

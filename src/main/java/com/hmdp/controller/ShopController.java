@@ -64,8 +64,12 @@ public class ShopController {
     @PutMapping
     public Result updateShop(@RequestBody Shop shop) {
         // 写入数据库
-        shopService.updateById(shop);
-        return Result.ok();
+        boolean flag = shopService.updateShop(shop);
+        if(flag){
+            return Result.ok();
+        }else {
+            return Result.fail("店铺信息更新失败！");
+        }
     }
 
     /**
