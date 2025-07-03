@@ -1,11 +1,16 @@
 package com.hmdp.utils;
 
-import lombok.Data;
-
+import java.io.Serializable;
 import java.time.LocalDateTime;
 
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
 @Data
-public class RedisData {
-    private LocalDateTime expireTime;
-    private Object data;
+@NoArgsConstructor
+@AllArgsConstructor
+public class RedisData<T> implements Serializable {
+	private LocalDateTime expireTime;
+	private T data;
 }
