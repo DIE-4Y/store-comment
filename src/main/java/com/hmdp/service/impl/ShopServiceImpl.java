@@ -1,8 +1,6 @@
 package com.hmdp.service.impl;
 
 import java.time.LocalDateTime;
-import java.util.HashMap;
-import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -17,12 +15,10 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.hmdp.entity.Shop;
 import com.hmdp.mapper.ShopMapper;
 import com.hmdp.service.IShopService;
+import com.hmdp.utils.CacheUtil;
 import com.hmdp.utils.RedisConstants;
 import com.hmdp.utils.RedisData;
 
-import cn.hutool.core.bean.BeanUtil;
-import cn.hutool.core.bean.copier.CopyOptions;
-import cn.hutool.core.map.MapUtil;
 import cn.hutool.core.util.BooleanUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.json.JSONUtil;
@@ -44,67 +40,19 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
 	// 线程池
 	private static final ExecutorService CACHE_REBUILD_EXECUTOR = Executors.newFixedThreadPool(1);
 
+	private final CacheUtil cacheUtil;
+
 	/**
 	 * 根据id查询商铺
 	 */
 	@Override
 	public Shop queryShopById(Long id) {
 		// 互斥锁解决缓存击穿
-		// return queryShopByIdMutex(id);
+		// return cacheUtil.getWithMutex(RedisConstants.CACHE_SHOP_KEY, id, Shop.class,
+		// this::getById,
+		// RedisConstants.CACHE_SHOP_TTL, TimeUnit.MINUTES);
 		// 逻辑过期解决缓存击穿
 		return queryShopByIdLogicalExpire(id);
-	}
-
-	/**
-	 * 互斥实现查询防止缓存击穿
-	 */
-	public Shop queryShopByIdMutex(Long id) {
-		// Redis查询商铺
-		String shopKey = RedisConstants.CACHE_SHOP_KEY + id;
-		Map<Object, Object> shopMap = stringRedisTemplate.opsForHash().entries(shopKey);
-
-		if (MapUtil.isNotEmpty(shopMap)) {
-			// 有数据
-			if (shopMap.containsKey("__NULL__")) { // 检查空值标记
-				return null; // 返回空值，避免穿透
-			}
-			return BeanUtil.fillBeanWithMap(shopMap, new Shop(), false);
-		}
-
-		// 没查到 互斥写入
-		if (tryLock(id)) {
-			// 通过数据库查询
-			Shop shop = query().eq("id", id).one();
-			if (shop != null) {
-				Map<String, Object> map = BeanUtil.beanToMap(shop, new HashMap<>(),
-						CopyOptions.create().setIgnoreNullValue(true)
-								// 字段检查会在忽略空值前执行 所以不能直接 （k, v）-> v.toString()不然会抛异常
-								.setFieldValueEditor((k, v) -> v == null ? null : v.toString()));
-
-				stringRedisTemplate.opsForHash().putAll(shopKey, map);
-
-				stringRedisTemplate.expire(shopKey, RedisConstants.CACHE_SHOP_TTL, TimeUnit.MINUTES);
-			} else {
-				// 数据库不存在的数据：写入特殊空值标记
-				Map<String, String> nullMap = new HashMap<>();
-				nullMap.put("__NULL__", "1"); // 特殊空值标记
-
-				stringRedisTemplate.opsForHash().putAll(shopKey, nullMap);
-				// 设置较短的过期时间
-				stringRedisTemplate.expire(shopKey, RedisConstants.CACHE_NULL_TTL, TimeUnit.MINUTES);
-			}
-			return shop;
-
-		} else {
-
-			// 有人写 休眠30ms
-			try {
-				Thread.sleep(30);
-				return queryShopByIdMutex(id);
-			} catch (InterruptedException e) {
-				throw new RuntimeException(e);
-			}
-		}
 	}
 
 	/**
@@ -134,7 +82,7 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
 			CACHE_REBUILD_EXECUTOR.submit(() -> {
 				// 数据库查询
 				try {
-					Thread.sleep(200);
+					// Thread.sleep(200);
 					Shop shop = getById(id);
 					redisData.setData(shop);
 					redisData.setExpireTime(LocalDateTime.now().plusSeconds(RedisConstants.CACHE_SHOP_TTL));
@@ -169,9 +117,6 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
 
 	/**
 	 * 获取锁 使用setnx 如果有人操作 则写入失败 返回false
-	 * 
-	 * @param id
-	 * @return
 	 */
 	private boolean tryLock(Long id) {
 		Boolean b = stringRedisTemplate.opsForValue().setIfAbsent(RedisConstants.LOCK_SHOP_KEY + id, "1", 3,
@@ -181,8 +126,6 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
 
 	/**
 	 * 操作完后 删除数据 释放锁
-	 * 
-	 * @param id
 	 */
 	private void unLock(Long id) {
 		stringRedisTemplate.delete(RedisConstants.LOCK_SHOP_KEY);
