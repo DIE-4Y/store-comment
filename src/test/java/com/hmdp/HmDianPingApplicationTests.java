@@ -1,6 +1,8 @@
 package com.hmdp;
 
 import java.time.LocalDateTime;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -13,6 +15,7 @@ import com.hmdp.entity.Shop;
 import com.hmdp.service.impl.ShopServiceImpl;
 import com.hmdp.utils.RedisConstants;
 import com.hmdp.utils.RedisData;
+import com.hmdp.utils.RedisIdWorker;
 
 import cn.hutool.json.JSONUtil;
 import lombok.extern.slf4j.Slf4j;
@@ -26,6 +29,9 @@ public class HmDianPingApplicationTests {
 	private ShopServiceImpl shopService;
 	@Autowired
 	private StringRedisTemplate stringRedisTemplate;
+	@Autowired
+	private RedisIdWorker redisIdWorker;
+	private ExecutorService es = Executors.newFixedThreadPool(500);
 
 	/**
 	 * 数据预热
@@ -44,6 +50,18 @@ public class HmDianPingApplicationTests {
 		json = stringRedisTemplate.opsForValue().get(shopKey);
 		RedisData redisData = JSONUtil.toBean(json, RedisData.class);
 		log.info("数据取出成功,{}", redisData);
+	}
+
+	@Test
+	public void IdWorkerTest() {
+		Runnable task = () -> {
+			for (int i = 0; i < 300; i++) {
+				System.out.println(redisIdWorker.nextId("order"));
+			}
+		};
+		for (int i = 0; i < 100; i++) {
+			es.submit(task);
+		}
 	}
 
 }
