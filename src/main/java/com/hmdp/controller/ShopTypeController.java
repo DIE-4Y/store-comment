@@ -1,16 +1,19 @@
 package com.hmdp.controller;
 
+import java.util.List;
 
-import com.hmdp.dto.Result;
-import com.hmdp.entity.ShopType;
-import com.hmdp.service.IShopTypeService;
-import lombok.extern.slf4j.Slf4j;
+import javax.annotation.Resource;
+
+import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import javax.annotation.Resource;
-import java.util.List;
+import com.hmdp.dto.Result;
+import com.hmdp.entity.ShopType;
+import com.hmdp.service.IShopTypeService;
+
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * <p>
@@ -23,14 +26,15 @@ import java.util.List;
 @Slf4j
 @RestController
 @RequestMapping("/shop-type")
+@CrossOrigin
 public class ShopTypeController {
-    @Resource
-    private IShopTypeService typeService;
+	@Resource
+	private IShopTypeService typeService;
 
-    @GetMapping("list")
-    public Result queryTypeList() {
-        log.info("查询店铺列表");
-        List<ShopType> typeList = typeService.queryShopTypeList();
-        return Result.ok(typeList);
-    }
+	@GetMapping("/list")
+	public Result queryTypeList() {
+		log.info("查询店铺列表");
+		List<ShopType> typeList = typeService.queryShopTypeList();
+		return Result.ok(typeList);
+	}
 }

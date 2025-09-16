@@ -28,5 +28,5 @@ redis.call('sadd', orderKey, userId)
 
 -- 发送消息到消息队列
 redis.call('xadd', 'stream.orders', '*', 'userId', userId, 'voucherId', voucherId, 'id', orderId)
--- redis.call("xadd", 'stream.orders', '*', 'userId', userId, 'voucherId', voucherId, 'id', id)
+
 return 0

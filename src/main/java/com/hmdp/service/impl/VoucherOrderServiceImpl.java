@@ -15,6 +15,7 @@ import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.connection.stream.Consumer;
 import org.springframework.data.redis.connection.stream.MapRecord;
 import org.springframework.data.redis.connection.stream.ReadOffset;
+import org.springframework.data.redis.connection.stream.StreamInfo;
 import org.springframework.data.redis.connection.stream.StreamOffset;
 import org.springframework.data.redis.connection.stream.StreamReadOptions;
 import org.springframework.data.redis.core.StreamOperations;
@@ -34,7 +35,9 @@ import com.hmdp.utils.RedisIdWorker;
 import com.hmdp.utils.UserHolder;
 
 import cn.hutool.core.bean.BeanUtil;
+import cn.hutool.core.util.BooleanUtil;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * <p>
@@ -44,6 +47,7 @@ import lombok.RequiredArgsConstructor;
  * @author 虎哥
  * @since 2021-12-22
  */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, VoucherOrder>
@@ -87,6 +91,8 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
 		public void run() {
 			while (true) {
 				try {
+					// 根据控制报错，队列不存在，就先创建
+					initStreamQueue();
 					StreamOperations<String, Object, Object> opsForStream = stringRedisTemplate.opsForStream();
 					// 获取消息队列的信息
 					List<MapRecord<String, Object, Object>> result = opsForStream.read(
@@ -111,7 +117,8 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
 					handleVoucherOrder(voucherOrder);
 
 					// ack确认从队列移除消息
-					opsForStream.acknowledge(queueName, "g1", entries.getId());
+					Long g1 = opsForStream.acknowledge(queueName, "g1", entries.getId());
+					log.info("消息确认成功，消息ID: {}", g1);
 				} catch (Exception e) {
 					// 出现异常，未获取到待处理的订单，从pending-list中获取正在处理的订单
 					handlePendingList();
@@ -120,8 +127,35 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
 		}
 
 		/**
-		 * 处理pending-list里的订单
+		 * 创建消息队列名称与组名称，不然会报错
 		 * 
+		 * @param
+		 * @author chenshanquan
+		 * @date 2025/9/16 9:37
+		 * @return void
+		 **/
+		private void initStreamQueue() {
+			Boolean exists = stringRedisTemplate.hasKey(queueName);
+			if (BooleanUtil.isFalse(exists)) {
+				log.info("基于stream消息队列名称不存在，开始创建消息队列名称：" + queueName);
+				// 不存在，需要创建
+				stringRedisTemplate.opsForStream().createGroup(queueName, ReadOffset.latest(), "g1");
+				log.info("队列名称:" + queueName + " 与group:g1创建完毕");
+				return;
+			}
+			// stream存在，判断group是否存在
+			StreamInfo.XInfoGroups groups = stringRedisTemplate.opsForStream().groups(queueName);
+			if (groups.isEmpty()) {
+				log.info("group不存在，开始创建group");
+				// group不存在，创建group
+				stringRedisTemplate.opsForStream().createGroup(queueName, ReadOffset.latest(), "g1");
+				log.info("group创建完毕");
+			}
+		}
+
+		/**
+		 * 处理pending-list里的订单
+		 *
 		 * @param
 		 * @author chenshanquan
 		 * @date 2025/9/15 15:26
@@ -153,7 +187,8 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
 					handleVoucherOrder(voucherOrder);
 
 					// ack确认从队列移除消息
-					opsForStream.acknowledge(queueName, "g1", entries.getId());
+					Long g1 = opsForStream.acknowledge(queueName, "g1", entries.getId());
+					log.info("消息确认成功，消息ID: {}", g1);
 				} catch (Exception e) {
 					// 出现异常，继续循环
 					log.error("处理pending-list订单异常，{}", e);
