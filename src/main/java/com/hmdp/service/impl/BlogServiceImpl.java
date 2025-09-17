@@ -13,9 +13,12 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.hmdp.dto.Result;
 import com.hmdp.dto.UserDTO;
 import com.hmdp.entity.Blog;
+import com.hmdp.entity.Follow;
 import com.hmdp.entity.User;
 import com.hmdp.mapper.BlogMapper;
 import com.hmdp.service.IBlogService;
+import com.hmdp.service.IFollowService;
+import com.hmdp.service.IUserService;
 import com.hmdp.utils.SystemConstants;
 import com.hmdp.utils.UserHolder;
 
@@ -35,10 +38,12 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IBlogService {
 
-	private final UserServiceImpl userService;
+	private final IUserService userService;
+	private final IFollowService followService;
 	private final StringRedisTemplate stringRedisTemplate;
 
 	private static final String BLOG_LIKED_KEY = "blog:liked:";
+	private final String FEED_KEY = "feed:";
 
 	/**
 	 * 查询热点数据
@@ -145,6 +150,30 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
 		// users转为UserDTO返回去除敏感信息
 		List<UserDTO> userDTOS = BeanUtil.copyToList(users, UserDTO.class);
 		return Result.ok(userDTOS);
+	}
+
+	@Override
+	public Result saveBlog(Blog blog) {
+		// 获取登录用户
+		UserDTO user = UserHolder.getUser();
+		blog.setUserId(user.getId());
+		// 保存探店博文
+		boolean success = save(blog);
+		if (!success) {
+			return Result.fail("发布笔记失败");
+		}
+		// 查询粉丝
+		List<Follow> follows = followService.lambdaQuery().eq(Follow::getFollowUserId, user.getId()).list();
+		for (Follow follow : follows) {
+			// 获取粉丝id
+			Long followId = follow.getUserId();
+			// 推送到feed
+			String key = FEED_KEY + followId;
+			stringRedisTemplate.opsForZSet().add(key, blog.getId().toString(), System.currentTimeMillis());
+		}
+
+		// 返回id
+		return Result.ok(blog.getId());
 	}
 
 	/**
