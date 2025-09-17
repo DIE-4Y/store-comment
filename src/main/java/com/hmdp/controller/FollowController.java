@@ -55,4 +55,18 @@ public class FollowController {
 	public Result isFollow(@PathVariable("id") Long followUserId) {
 		return followService.isFollow(followUserId);
 	}
+
+	/**
+	 * 共同关注功能
+	 * 
+	 * @param followUserId
+	 *            关注用户id
+	 * @author chenshanquan
+	 * @date 2025/9/17 16:35
+	 * @return com.hmdp.dto.Result
+	 **/
+	@GetMapping("/common/{id}")
+	public Result followCommons(@PathVariable("id") Long followUserId) {
+		return followService.followCommons(followUserId);
+	}
 }
