@@ -1,16 +1,19 @@
 package com.hmdp.service.impl;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.ZSetOperations;
 import org.springframework.stereotype.Service;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.hmdp.dto.Result;
+import com.hmdp.dto.ScrollResult;
 import com.hmdp.dto.UserDTO;
 import com.hmdp.entity.Blog;
 import com.hmdp.entity.Follow;
@@ -44,6 +47,8 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
 
 	private static final String BLOG_LIKED_KEY = "blog:liked:";
 	private final String FEED_KEY = "feed:";
+	// 滚动查询一页的条数
+	private final int PAGE_SIZE = 2;
 
 	/**
 	 * 查询热点数据
@@ -70,12 +75,12 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
 
 	/**
 	 * 根据id查询博客信息
-	 *
+	 * 
 	 * @param id
 	 *            博客id
+	 * @return com.hmdp.dto.Result
 	 * @author chenshanquan
 	 * @date 2025/9/16 9:57
-	 * @return com.hmdp.dto.Result
 	 **/
 	@Override
 	public Result queryBlogById(Long id) {
@@ -94,9 +99,9 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
 	 * 
 	 * @param id
 	 *            博客id
+	 * @return com.hmdp.dto.Result
 	 * @author chenshanquan
 	 * @date 2025/9/16 12:00
-	 * @return com.hmdp.dto.Result
 	 **/
 	@Override
 	public Result likeBlog(Long id) {
@@ -127,9 +132,9 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
 	 * 查询点赞前5名，按时间排序
 	 * 
 	 * @param id
+	 * @return com.hmdp.dto.Result
 	 * @author chenshanquan
 	 * @date 2025/9/16 11:56
-	 * @return com.hmdp.dto.Result
 	 **/
 	@Override
 	public Result queryBlogLikes(Long id) {
@@ -177,13 +182,77 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
 	}
 
 	/**
+	 * 滚动分页
+	 * 
+	 * @param max
+	 * @param offset
+	 * @return com.hmdp.dto.Result
+	 * @author chenshanquan
+	 * @date 2025/9/17 21:32
+	 **/
+	@Override
+	public Result queryBlogOfFollow(Long max, Integer offset) {
+		// 获取当前用户
+		Long userId = UserHolder.getUser().getId();
+		// 查询收件箱
+		String key = FEED_KEY + userId;
+		Set<ZSetOperations.TypedTuple<String>> result = stringRedisTemplate.opsForZSet()
+				// 查询语句：ZREVRANGEBYSCORE key Max Min LIMIT offset count
+				.reverseRangeByScoreWithScores(key, 0, max, offset, PAGE_SIZE);
+
+		if (result == null || result.isEmpty()) {
+			return Result.ok(Collections.emptyList());
+		}
+
+		// 返回的偏移量，用于下一次查询
+		int os = 1;
+
+		// id列表
+		List<Long> ids = new ArrayList<>(result.size());
+		long minTime = 0;
+
+		// 解析数据：blogId, minTime, offset
+		for (ZSetOperations.TypedTuple<String> tuple : result) {
+			// 获取id
+			Long id = Long.valueOf(tuple.getValue());
+			ids.add(id);
+			long time = tuple.getScore().longValue();
+			if (time == minTime) {
+				++os;
+			} else {
+				minTime = time;
+				os = 1;
+			}
+		}
+
+		// 查询blog数据
+		String idsStr = StrUtil.join(",", ids);
+		List<Blog> blogs = lambdaQuery().in(Blog::getId, ids)
+				// 按顺序获取blog
+				.last(" ORDER BY FIELD(id," + idsStr + ")").list();
+		// 设置博客的用户相关信息
+		for (Blog blog : blogs) {
+			setUserByBlog(blog);
+			setLikedFlagByBlog(blog);
+		}
+
+		// 封装并返回
+		ScrollResult scrollResult = new ScrollResult();
+		scrollResult.setList(blogs);
+		scrollResult.setOffset(os);
+		scrollResult.setMinTime(minTime);
+
+		return Result.ok(scrollResult);
+	}
+
+	/**
 	 * 设置是用户否点过赞
 	 * 
 	 * @param blog
 	 *            博客
+	 * @return void
 	 * @author chenshanquan
 	 * @date 2025/9/16 10:27
-	 * @return void
 	 **/
 	private void setLikedFlagByBlog(Blog blog) {
 		// 获取用户信息
@@ -202,9 +271,9 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
 	 * 
 	 * @param blog
 	 *            博客
+	 * @return void
 	 * @author chenshanquan
 	 * @date 2025/9/16 10:13
-	 * @return void
 	 **/
 	private void setUserByBlog(Blog blog) {
 		Long userId = blog.getUserId();
