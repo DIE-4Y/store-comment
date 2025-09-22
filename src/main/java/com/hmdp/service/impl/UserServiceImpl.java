@@ -3,11 +3,13 @@ package com.hmdp.service.impl;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 import javax.servlet.http.HttpSession;
 
+import org.springframework.data.redis.connection.BitFieldSubCommands;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
@@ -144,7 +146,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
 		LocalDate now = LocalDate.now();
 		String date = now.format(DateTimeFormatter.ofPattern(DATE_FORMAT));
 
-		String key = RedisConstants.USER_SIGN_KEY + userId;
+		String key = RedisConstants.USER_SIGN_KEY + userId + date;
 
 		// 当前天数
 		int dayOfMonth = now.getDayOfMonth();
@@ -152,6 +154,53 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
 		// 签到，当前天数比特位置1
 		stringRedisTemplate.opsForValue().setBit(key, dayOfMonth - 1, true);
 		return Result.ok();
+	}
+
+	/**
+	 * 统计签到天数
+	 */
+	@Override
+	public Result signCount() {
+		// 用户登录id
+		Long userId = UserHolder.getUser().getId();
+
+		// 当前时间信息
+		LocalDate now = LocalDate.now();
+		String date = now.format(DateTimeFormatter.ofPattern(DATE_FORMAT));
+		String key = RedisConstants.USER_SIGN_KEY + userId + date;
+		int dayOfMonth = now.getDayOfMonth();
+
+		// 获取当前用户本月至在当前日期的签到信息
+		List<Long> result = stringRedisTemplate.opsForValue().bitField(
+				// redis Key
+				key,
+				// 生成条件
+				BitFieldSubCommands.create().
+				// 子命令
+						get(BitFieldSubCommands.BitFieldType.unsigned(dayOfMonth)).valueAt(0));
+
+		// 没获取到签到信息，说明没签到
+		if (result == null || result.isEmpty()) {
+			return Result.ok(0);
+		}
+
+		int count = 0;
+
+		Long logTable = result.get(0);
+		if (logTable == null || logTable == 0L) {
+			return Result.ok(0);
+		}
+
+		while (true) {
+			if ((logTable & 1) == 0) {
+				break;
+			} else {
+				count++;
+				logTable = logTable >> 1;
+			}
+		}
+
+		return Result.ok(count);
 	}
 
 	// 根据phone生成用户
