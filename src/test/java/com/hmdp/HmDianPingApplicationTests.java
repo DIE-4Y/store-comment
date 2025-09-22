@@ -101,4 +101,19 @@ public class HmDianPingApplicationTests {
 			stringRedisTemplate.opsForGeo().add(key, geoLocations);
 		}
 	}
+
+	@Test
+	public void testHyperLog() {
+		String[] strings = new String[1000];
+		for (int i = 0; i < 1000000; i++) {
+			// 每一千条插入
+			int j = i % 1000;
+			strings[j] = "user_" + i;
+			if (j == 999) {
+				stringRedisTemplate.opsForHyperLogLog().add("hl2", strings);
+			}
+		}
+		Long hl2 = stringRedisTemplate.opsForHyperLogLog().size("hl2");
+		System.out.println(hl2);
+	}
 }
