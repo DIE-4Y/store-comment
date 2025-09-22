@@ -1,13 +1,19 @@
 package com.hmdp;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.stream.Collectors;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.data.geo.Point;
+import org.springframework.data.redis.connection.RedisGeoCommands;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.test.context.junit4.SpringRunner;
 
@@ -64,4 +70,35 @@ public class HmDianPingApplicationTests {
 		}
 	}
 
+	/**
+	 * 将数据库中的数据装入redis
+	 * 
+	 * @param
+	 * @author chenshanquan
+	 * @date 2025/9/18
+	 * @return void
+	 **/
+	@Test
+	public void loadShopData() {
+		// 获取数据库中的店铺信息
+		List<Shop> shops = shopService.list();
+
+		// 数据转为以类型id为键的map，
+		Map<Long, List<Shop>> shopMap = shops.stream().collect(Collectors.groupingBy(Shop::getTypeId));
+
+		// 将数据存入redis
+		for (Map.Entry<Long, List<Shop>> entry : shopMap.entrySet()) {
+			Long typeId = entry.getKey();
+			String key = RedisConstants.SHOP_GEO_KEY + typeId;
+			List<Shop> value = entry.getValue();
+
+			List<RedisGeoCommands.GeoLocation<String>> geoLocations = new ArrayList<>(value.size());
+			for (Shop shop : value) {
+				RedisGeoCommands.GeoLocation<String> geoLocation = new RedisGeoCommands.GeoLocation<String>(
+						shop.getId().toString(), new Point(shop.getX(), shop.getY()));
+				geoLocations.add(geoLocation);
+			}
+			stringRedisTemplate.opsForGeo().add(key, geoLocations);
+		}
+	}
 }
