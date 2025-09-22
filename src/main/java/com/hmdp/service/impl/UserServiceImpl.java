@@ -1,5 +1,7 @@
 package com.hmdp.service.impl;
 
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -19,6 +21,7 @@ import com.hmdp.service.IUserService;
 import com.hmdp.utils.RedisConstants;
 import com.hmdp.utils.RegexUtils;
 import com.hmdp.utils.SystemConstants;
+import com.hmdp.utils.UserHolder;
 
 import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.bean.copier.CopyOptions;
@@ -40,6 +43,8 @@ import lombok.RequiredArgsConstructor;
 public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IUserService {
 
 	private final StringRedisTemplate stringRedisTemplate;
+
+	private static final String DATE_FORMAT = ":yyyy-MM";
 
 	@Override
 	public Result sendCode(String phone, HttpSession session) {
@@ -124,6 +129,29 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
 		}
 		UserDTO userDTO = BeanUtil.copyProperties(user, UserDTO.class);
 		return Result.ok(userDTO);
+	}
+
+	/**
+	 * 签到功能
+	 */
+	@Override
+	public Result sign() {
+		// 用户登录信息
+		UserDTO user = UserHolder.getUser();
+		Long userId = user.getId();
+
+		// 当前时间
+		LocalDate now = LocalDate.now();
+		String date = now.format(DateTimeFormatter.ofPattern(DATE_FORMAT));
+
+		String key = RedisConstants.USER_SIGN_KEY + userId;
+
+		// 当前天数
+		int dayOfMonth = now.getDayOfMonth();
+
+		// 签到，当前天数比特位置1
+		stringRedisTemplate.opsForValue().setBit(key, dayOfMonth - 1, true);
+		return Result.ok();
 	}
 
 	// 根据phone生成用户

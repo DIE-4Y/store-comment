@@ -97,4 +97,12 @@ public class UserController {
 	public Result queryById(@PathVariable("id") Long id) {
 		return userService.queryById(id);
 	}
+
+	/**
+	 * 签到功能
+	 */
+	@PostMapping("/sign")
+	public Result sign() {
+		return userService.sign();
+	}
 }
