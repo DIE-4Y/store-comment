@@ -121,10 +121,9 @@ public class HmDianPingApplicationTests {
     @Test
     public void testBloomFilter() {
         bloomFilter.delete();
-        int size = 14;
-        for (int i = 1; i <= size; i++) {
-            bloomFilter.add(String.valueOf(i));
-        }
+        shopService.list().forEach(
+                shop -> bloomFilter.add(String.valueOf(shop.getId()))
+        );
         System.out.println("店铺添加完成！");
         // int count = 0;
         // for (int i = size; i < size * 2; ++i) {
